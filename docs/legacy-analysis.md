@@ -38,10 +38,12 @@
 락 기반 동기화를 통해 이를 보호하는 방식으로 상태를 관리하고 있었다.
 
 **Structural Limitation**  
-이 구조에서는 여러 스레드가 동일한 상태에 접근하게 되며,
-락 경합이 발생할 가능성이 높다.
-상태 변경 흐름이 암묵적으로 분산되어 있어,
-서버 상태가 언제, 어디서 변경되는지 한눈에 파악하기 어렵다.
+공유 메모리 기반 상태 관리는 락을 통해 동기화될 수밖에 없으며,
+이로 인해 lock contention, critical section 확대,
+그리고 상황에 따라 deadlock 가능성이 구조적으로 내재된다.
+또한 상태 변경이 여러 코드 경로에 분산되어 있어
+state transition의 추적이 어렵다는 문제가 있다.
+
 
 **Why It Matters**  
 공유 상태 중심 설계는 동시 접속자가 증가할수록
@@ -49,18 +51,20 @@
 또한 동시성 오류가 발생했을 때
 원인을 추적하고 수정하는 비용이 크게 증가한다.
 
+
 ---
 
 ### 3.2 Blocking I/O with Thread-per-Connection Model
 
 **Observation**  
-각 클라이언트 연결은 독립적인 스레드에서 처리되며,
-입력 처리는 블로킹 I/O 방식으로 수행되고 있었다.
+각 클라이언트 연결은 thread-per-connection 모델로 처리되며,
+입력은 blocking I/O 방식으로 수행되고 있었다.
+
 
 **Structural Limitation**  
-클라이언트 입력이 대기 상태에 있을 경우,
-해당 스레드는 아무 작업도 수행하지 못한 채 리소스를 점유한다.
-동시 접속 수가 늘어날수록
+클라이언트 입력(블로킹 I/O)는 입력 대기 동안 스레드를 점유하게 하며,
+이는 곧 idle thread 증가와 리소스 낭비로 이어진다.
+동시 접속 수가 증가할수록 OS 스레드 수와 메모리 사용량이 선형적으로 증가한다.
 스레드 수와 메모리 사용량이 선형적으로 증가한다.
 
 **Why It Matters**  
@@ -78,15 +82,17 @@
 다른 컴포넌트의 메서드를 직접 호출하는 방식으로 이루어져 있었다.
 
 **Structural Limitation**  
-이 방식은 스레드 경계를 명확히 분리하지 못하고,
+이 방식은 스레드 경계(concurrency boundary)를 명확히 분리하지 못하고,
 동기화 책임이 호출자와 피호출자 사이에 분산된다.
-결과적으로 시스템 전체의 동작 흐름을 이해하기 어려워진다.
+결과적으로 tight coupling과 implicit synchronization dependency가 발생하고 
+시스템 전체의 동작 흐름을 이해하기 어려워진다.
 
 **Why It Matters**  
 컴포넌트 간 직접 호출이 많아질수록
 결합도가 증가하고,
 동시성 관련 버그가 발생할 가능성이 높아진다.
 이는 기능 확장과 유지보수를 어렵게 만든다.
+메시지 전달을 message passing 모델로 분리할 필요성이 있다.
 
 ---
 
@@ -97,7 +103,7 @@
 동시 접근을 제어하고 있었다.
 
 **Structural Limitation**  
-락 기반 구조에서는 동시 접근이 많아질수록
+Lock-based synchronization(락 기반 구조)에서는 동시 접근이 많아질수록
 경합과 대기 시간이 증가한다.
 또한 락 획득 순서나 범위를 잘못 설계할 경우
 데드락과 같은 문제가 발생할 가능성이 있다.
@@ -142,4 +148,16 @@
 본 분석은 기존 Java 기반 채팅 시스템의 구조적 한계를 정리한 것이다.
 이 문서는 이후 Go 언어 기반 서버를 설계하는 과정에서
 기술 선택과 아키텍처 결정을 위한 근거로 활용되었다.
+
+## Summary of Structural Differences
+
+The legacy system is fundamentally based on
+shared mutable state, blocking I/O, and lock-based synchronization.
+
+In contrast, the Go re-design adopts
+message passing, goroutine-based concurrency,
+and explicit separation of concurrency boundaries.
+
+These differences represent architectural shifts,
+not issues solvable by minor refactoring.
 
