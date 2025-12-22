@@ -3,3 +3,19 @@
 
 기존 코드는 직접 작성한 것이 아니므로 본 레포지토리에는 포함하지 않았으며, 분석 과정과 구조적 한계에 대한 정리는 별도의 문서(docs/legacy-analysis.md)로 기록했습니다. 본 프로젝트의 목적은 기존 코드를 그대로 유지하거나 부분적으로 수정하는 데 있지 않고, 
 기존 구조의 한계를 명확히 정의한 뒤 동시성·확장성·유지보수성 관점에서 더 적합한 설계를 고민하여, 이를 Go 언어 기반으로 재설계·재구현하는 데 있습니다.
+
+## Background
+
+This project started from analyzing an existing Java-based multithreaded chat system
+implemented by an acquaintance.
+While running and reviewing the system, I identified architectural limitations that
+cannot be addressed through simple bug fixes or minor refactoring.
+
+Since the original code was not authored by me, it is not included in this repository.
+Instead, the analysis of the legacy system and the identified structural limitations
+are documented separately in `docs/legacy-analysis.md`.
+
+The goal of this project is not to partially modify or port the existing implementation,
+but to clearly define its architectural constraints and redesign the system from the ground up.
+Based on considerations around concurrency, scalability, and maintainability,
+the chat server is re-architected and re-implemented using Go.
