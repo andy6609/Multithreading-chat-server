@@ -32,7 +32,7 @@
 ## 3. Structural Limitations Identified
 
 ### Legacy Architecture Overview (Conceptual)
-
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │              레거시 Java 채팅 서버 구조                          │
 └─────────────────────────────────────────────────────────────────┘
@@ -103,6 +103,7 @@
    
 5. 강한 결합
    모든 컴포넌트가 서로 직접 참조
+```
 
 The legacy system centralizes state management and message routing
 around shared mutable state accessed by multiple threads.
@@ -245,6 +246,7 @@ and explicit separation of concurrency boundaries.
 
 These differences represent architectural shifts,
 not issues solvable by minor refactoring.
+
 
 
 
