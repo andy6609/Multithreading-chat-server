@@ -1,21 +1,3 @@
-Key Architectural Limitations Identified (Legacy Java)
-
-기존 구현에서 확인한 핵심 구조적 한계는 다음과 같습니다.
-
-	1.	공유 상태(Shared Mutable State) 중심의 서버 상태 관리
-서버가 접속자 목록/유저리스트 등 핵심 상태를 공유 자료구조로 보유하고, 락으로 동기화하는 구조였습니다. 이 방식은 동시 접속자가 증가할수록 락 경합이 커지고, 상태 변경 흐름을 추적하기 어려워 안정성과 확장성 측면에서 한계가 있습니다.
-
-	2.	Thread-per-Connection + 블로킹 I/O 모델의 확장성 제약
-클라이언트 입력 처리에 블로킹 I/O가 사용되고, 연결당 스레드를 점유하는 형태라 동시 접속 규모가 커질수록 리소스 사용량(스레드/메모리)과 컨텍스트 스위칭 오버헤드가 구조적으로 증가합니다.
-	
-	3.	컴포넌트 간 직접 호출(Direct Invocation)로 인한 결합도 증가
-메시지 브로드캐스트/전달이 “다른 컴포넌트의 메서드를 직접 호출”하는 방식에 가깝게 설계되어, 동시성 경계를 넘나드는 호출이 많아지고 동기화 복잡도가 증가합니다. 결과적으로 유지보수와 기능 확장이 어려워질 수 있습니다.
-	
-	4.	락 기반 동기화(Lock-based Synchronization) 의존
-서버 핵심 로직이 synchronized 등 락 기반 제어에 의존해 동작하며, 규모가 커질수록 경합과 지연이 커질 수 있습니다. 또한 “어디서 락을 잡고 풀고 있는지”가 분산될수록 디버깅 난이도가 올라갑니다.
-	
-	5.	단일 책임이 과도하게 집중된 중앙집중형 구조(Centralized Coordinator)
-연결 관리, 유저리스트 갱신, 메시지 라우팅 등 다양한 책임이 하나의 중심 컴포넌트에 몰리는 경향이 있어, 병목 지점이 생기기 쉽고 테스트/확장/변경에 취약해집니다.
 
 # Legacy System Analysis
 
@@ -67,6 +49,8 @@ Key Architectural Limitations Identified (Legacy Java)
 또한 동시성 오류가 발생했을 때
 원인을 추적하고 수정하는 비용이 크게 증가한다.
 
+---
+
 ### 3.2 Blocking I/O with Thread-per-Connection Model
 
 **Observation**  
@@ -85,6 +69,8 @@ Key Architectural Limitations Identified (Legacy Java)
 이는 단순한 성능 문제가 아니라,
 시스템이 감당할 수 있는 사용자 수 자체를 제한한다.
 
+---
+
 ### 3.3 Direct Method Invocation Across Concurrency Boundaries
 
 **Observation**  
@@ -101,6 +87,8 @@ Key Architectural Limitations Identified (Legacy Java)
 결합도가 증가하고,
 동시성 관련 버그가 발생할 가능성이 높아진다.
 이는 기능 확장과 유지보수를 어렵게 만든다.
+
+---
 
 ### 3.4 Lock-based Synchronization as Primary Concurrency Control
 
@@ -120,6 +108,8 @@ Key Architectural Limitations Identified (Legacy Java)
 특히 동시성 구조를 확장하거나 변경할 때
 위험 요소가 빠르게 증가한다.
 
+---
+
 ### 3.5 Centralized Coordinator with Multiple Responsibilities
 
 **Observation**  
@@ -136,6 +126,8 @@ Key Architectural Limitations Identified (Legacy Java)
 확장성과 테스트 가능성을 동시에 저해한다.
 장기적으로 유지보수 비용이 크게 증가할 수 있다.
 
+---
+
 ## 4. Design Implications
 
 위에서 정리한 한계점들은
@@ -150,3 +142,4 @@ Key Architectural Limitations Identified (Legacy Java)
 본 분석은 기존 Java 기반 채팅 시스템의 구조적 한계를 정리한 것이다.
 이 문서는 이후 Go 언어 기반 서버를 설계하는 과정에서
 기술 선택과 아키텍처 결정을 위한 근거로 활용되었다.
+
