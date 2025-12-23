@@ -176,15 +176,17 @@ another component’s internal state.
 By avoiding shared mutable state,
 the system eliminates lock contention as a scalability bottleneck.
 
-### 6.2 Backpressure Awareness
+### 6.2 Backpressure Awareness (Implemented)
 
-Outbound message delivery is decoupled from message production,
-allowing the system to handle slow or unresponsive clients gracefully.
+Outbound delivery is decoupled from message production using a per-client outbound channel and a dedicated writer loop.
 
-### 6.3 Failure Isolation
+To prevent slow clients from blocking system progress, outbound sends are bounded and non-blocking at the routing layer.
+This ensures that the Registry event loop remains responsive even under uneven client consumption rates.
 
-Each client session is isolated.
-Failures in one session do not propagate to the rest of the system.
+### 6.3 Failure Isolation (Implemented)
+
+Each client session runs independently, and outbound delivery is isolated per client.
+A slow or stalled client affects only its own send path and does not stall shared state progression in the Registry.
 
 ---
 
@@ -200,8 +202,39 @@ Each component can be tested independently
 without requiring a running GUI client.
 
 ---
+## 8. Implementation Status & Verification
 
-## 8. Summary
+This redesign is not only documented conceptually; key design claims are validated in code.
+
+### 8.1 Registry-Centered State Transition Tests
+
+The system includes unit tests that validate deterministic state transitions in the Registry (single-owner state component):
+
+- **Duplicate username rejection**: Registering the same username twice returns an explicit error.
+- **User list consistency (`/users`)**: Join/leave transitions are reflected in the user list output.
+- **Direct message routing (`/w`)**:
+  - Successful routing delivers only to the intended receiver.
+  - Unknown receivers produce `ERR user_not_found`.
+  - Self-whisper is rejected with `ERR cannot_whisper_self`.
+
+These tests ensure the “single-writer state ownership + message-driven transitions” principle is enforced in practice.
+
+### 8.2 Concurrency Validation (`go test -race`)
+
+Since concurrency is a first-class concern in this design, the code is validated using the Go race detector:
+
+- `go test -race` is used to detect unintended shared-state access and data races.
+- This provides an empirical confidence layer beyond manual testing.
+
+### 8.3 Test-Friendly Lifecycle Control (Stop/Wait)
+
+The Registry run loop supports explicit shutdown semantics (Stop/Wait), enabling reliable testing and preventing goroutine leaks:
+
+- The Registry can be stopped without closing shared channels unsafely.
+- Tests can call `Stop()` and `Wait()` to ensure deterministic teardown.
+- This avoids failure modes such as `send on closed channel` and improves long-term maintainability.
+---
+## 9. Summary
 
 This redesign represents an architectural shift rather than a refactor.
 
@@ -212,3 +245,13 @@ the system becomes more scalable, maintainable, and robust.
 Go is not chosen for performance alone,
 but because its concurrency model enables this design
 to be expressed clearly and correctly.
+
+## 10. Planned Work (Non-MVP)
+
+The following items are intentionally out of scope for the current MVP, but are natural extensions of the architecture:
+
+- **Explicit Router component extraction** (currently routing may be co-located with the Registry for simplicity)
+- **Server-level graceful shutdown** (listener close + coordinated component teardown)
+- **Observability**: structured logging, metrics, profiling (pprof)
+- **Rooms**: join/leave room, room broadcast
+
