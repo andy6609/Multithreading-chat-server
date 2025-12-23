@@ -1,4 +1,50 @@
 
+## How to run
+
+```bash
+cd /Users/andy6609/Multithreading-chat-server-go
+GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go run ./cmd/server -addr :5000
+```
+
+Then connect from multiple terminals:
+
+```bash
+nc localhost 5000
+```
+
+## Protocol (MVP)
+
+- On connect, the server prompts: `Enter username:`
+- First line from client: username
+- After that:
+  - Any normal line: broadcast to all connected users
+  - `/users`: show current connected user list
+  - `/w <username> <text>`: whisper to a specific user
+  - `/exit`: disconnect
+
+### Error responses (minimal)
+
+- `ERR username_taken`
+- `ERR username_invalid`
+- `ERR user_not_found`
+- `ERR cannot_whisper_self`
+
+## Architecture ↔ docs linkage
+
+This repository is a Go re-implementation based on the architectural limitations documented in `docs/legacy-analysis.md`.
+The redesign principles are described in `docs/redesign.md` and are reflected in the Go code as follows:
+
+- **Single-writer state ownership**: `internal/chat/registry.go` owns the client map in a single goroutine (`Registry.Run()`).
+- **Message passing instead of shared state**: sessions emit `Event`s into `Registry.Events()` rather than mutating global state.
+- **Per-client outbound isolation**: each client has its own outbound channel and writer goroutine (`internal/chat/writer.go`).
+
+## Verification
+
+```bash
+cd /Users/andy6609/Multithreading-chat-server-go
+GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go test -race ./...
+```
+
 
 ## Background
 

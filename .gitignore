@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Go build cache (local)
+.gocache/
+.gomodcache/
+
+# Legacy Java code (not included in this repository)
+멀티_java_server_master 복사본/
+
