@@ -69,7 +69,24 @@ the chat server is re-architected and re-implemented using Go.
 기존 코드는 직접 작성한 것이 아니므로 본 레포지토리에는 포함하지 않았으며, 분석 과정과 구조적 한계에 대한 정리는 별도의 문서(docs/legacy-analysis.md)로 기록함. 본 프로젝트의 목적은 기존 코드를 그대로 유지하거나 부분적으로 수정하는 데 있지 않고, 
 기존 구조의 한계를 명확히 정의한 뒤 동시성·확장성·유지보수성 관점에서 더 적합한 설계를 고민하여, 이를 Go 언어 기반으로 재설계·재구현하는 데 있음.
 
-## 아키텍처 개요 (WIP)
+
+## Architecture Overview (WIP)
+
+This system is designed with explicit concurrency boundaries and a strong preference
+for message passing over shared mutable state.
+
+[Client]
+   -> (TCP connection)
+   -> Connection Acceptor
+   -> Client Session Handler (one per connection)
+   -> Message Router
+   -> Client Registry (single owner of mutable state)
+   -> Outbound Dispatcher (isolated per-client send paths)
+   -> [Client]
+
+All state mutations occur as a result of message handling rather than direct access
+to shared data structures. This approach centralizes state ownership, reduces the need
+for fine-grained locking, and makes concurrency behavior easier to reason about.
 
 본 시스템은 동시성 경계를 명확히 하고, 공유 상태 대신 메시지 전달(message passing)을 중심으로 설계함.
 
@@ -83,3 +100,4 @@ the chat server is re-architected and re-implemented using Go.
   -> [클라이언트]
 
 모든 상태 변경은 공유 메모리 접근이 아니라 메시지 흐름을 통해 수행됨.
+
