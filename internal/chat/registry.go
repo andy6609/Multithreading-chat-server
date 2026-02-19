@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Registry struct {
@@ -50,18 +51,31 @@ func (r *Registry) Run() {
 	for {
 		select {
 		case ev := <-r.events:
+			start := time.Now()
+			eventType := ""
+
 			switch ev.Type {
 			case EventRegister:
+				eventType = "register"
 				r.handleRegister(clients, ev)
+				ConnectedClients.Set(float64(len(clients)))
 			case EventUnregister:
+				eventType = "unregister"
 				r.handleUnregister(clients, ev)
+				ConnectedClients.Set(float64(len(clients)))
 			case EventBroadcast:
+				eventType = "broadcast"
 				r.handleBroadcast(clients, ev)
 			case EventUsers:
+				eventType = "users"
 				r.handleUsers(clients, ev)
 			case EventWhisper:
+				eventType = "whisper"
 				r.handleWhisper(clients, ev)
 			}
+
+			MessagesTotal.WithLabelValues(eventType).Inc()
+			EventProcessingDuration.WithLabelValues(eventType).Observe(time.Since(start).Seconds())
 		case <-r.stopCh:
 			return
 		}
