@@ -7,7 +7,7 @@ import (
 )
 
 func TestRegistry_RegisterRejectsDuplicateUsername(t *testing.T) {
-	r := NewRegistry(128)
+	r := NewRegistry(128, nil)
 	go r.Run()
 	t.Cleanup(func() {
 		r.Stop()
@@ -31,7 +31,7 @@ func TestRegistry_RegisterRejectsDuplicateUsername(t *testing.T) {
 }
 
 func TestRegistry_UsersReflectJoinLeave(t *testing.T) {
-	r := NewRegistry(128)
+	r := NewRegistry(128, nil)
 	go r.Run()
 	t.Cleanup(func() {
 		r.Stop()
@@ -60,7 +60,7 @@ func TestRegistry_UsersReflectJoinLeave(t *testing.T) {
 }
 
 func TestRegistry_WhisperRoutesOrErrors(t *testing.T) {
-	r := NewRegistry(128)
+	r := NewRegistry(128, nil)
 	go r.Run()
 	t.Cleanup(func() {
 		r.Stop()
