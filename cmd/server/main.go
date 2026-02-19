@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,22 +11,25 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":5000", "listen address")
+	addr := flag.String("addr", ":5000", "chat listen address")
+	metricsAddr := flag.String("metrics-addr", ":9090", "metrics listen address")
 	flag.Parse()
 
-	logger := log.New(os.Stdout, "[chat-server] ", log.LstdFlags|log.Lmicroseconds)
+	_ = metricsAddr // metrics endpoint는 인프라 레이어에서 연결 예정
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
 
 	srv := chat.NewServer(*addr, logger)
 	if err := srv.Start(); err != nil {
-		logger.Fatalf("failed to start server: %v", err)
+		logger.Error("failed to start server", "error", err)
+		os.Exit(1)
 	}
-	logger.Printf("listening on %s", *addr)
 
-	// MVP: keep running until SIGINT/SIGTERM. (Graceful shutdown is out-of-scope.)
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
-	logger.Printf("signal received, exiting")
+
+	srv.Stop()
 }
-
-
