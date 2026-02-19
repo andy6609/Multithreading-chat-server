@@ -15,13 +15,11 @@ func main() {
 	metricsAddr := flag.String("metrics-addr", ":9090", "metrics listen address")
 	flag.Parse()
 
-	_ = metricsAddr // metrics endpoint는 인프라 레이어에서 연결 예정
-
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 
-	srv := chat.NewServer(*addr, logger)
+	srv := chat.NewServer(*addr, *metricsAddr, logger)
 	if err := srv.Start(); err != nil {
 		logger.Error("failed to start server", "error", err)
 		os.Exit(1)

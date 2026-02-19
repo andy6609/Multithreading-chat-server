@@ -3,23 +3,28 @@ package chat
 import (
 	"log/slog"
 	"net"
+	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
-	addr     string
-	logger   *slog.Logger
-	reg      *Registry
-	listener net.Listener
+	addr        string
+	metricsAddr string
+	logger      *slog.Logger
+	reg         *Registry
+	listener    net.Listener
 }
 
-func NewServer(addr string, logger *slog.Logger) *Server {
+func NewServer(addr, metricsAddr string, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Server{
-		addr:   addr,
-		logger: logger,
-		reg:    NewRegistry(128, logger),
+		addr:        addr,
+		metricsAddr: metricsAddr,
+		logger:      logger,
+		reg:         NewRegistry(128, logger),
 	}
 }
 
@@ -32,9 +37,19 @@ func (s *Server) Start() error {
 
 	go s.reg.Run()
 	go s.acceptLoop(ln)
+	go s.serveMetrics()
 
 	s.logger.Info("server started", "addr", s.addr)
 	return nil
+}
+
+func (s *Server) serveMetrics() {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	s.logger.Info("metrics available", "addr", s.metricsAddr+"/metrics")
+	if err := http.ListenAndServe(s.metricsAddr, mux); err != nil {
+		s.logger.Error("metrics server error", "error", err)
+	}
 }
 
 func (s *Server) Stop() {
