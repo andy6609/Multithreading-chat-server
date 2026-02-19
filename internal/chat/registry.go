@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"log/slog"
 	"sort"
 	"strings"
 )
@@ -9,16 +10,21 @@ type Registry struct {
 	events chan Event
 	stopCh chan struct{}
 	doneCh chan struct{}
+	logger *slog.Logger
 }
 
-func NewRegistry(buffer int) *Registry {
+func NewRegistry(buffer int, logger *slog.Logger) *Registry {
 	if buffer <= 0 {
 		buffer = 64
+	}
+	if logger == nil {
+		logger = slog.Default()
 	}
 	return &Registry{
 		events: make(chan Event, buffer),
 		stopCh: make(chan struct{}),
 		doneCh: make(chan struct{}),
+		logger: logger,
 	}
 }
 
@@ -87,6 +93,8 @@ func (r *Registry) handleRegister(clients map[string]*Client, ev Event) {
 	ev.Client.Username = username
 	clients[username] = ev.Client
 
+	r.logger.Info("user registered", "username", username)
+
 	// Minimal UX: notify client it's accepted and notify others.
 	sendLine(ev.Client, "OK")
 	r.broadcastSystem(clients, username+" joined")
@@ -105,6 +113,8 @@ func (r *Registry) handleUnregister(clients map[string]*Client, ev Event) {
 		return
 	}
 	delete(clients, username)
+
+	r.logger.Info("user left", "username", username)
 
 	// Closing Out stops the writer goroutine gracefully.
 	close(ev.Client.Out)
