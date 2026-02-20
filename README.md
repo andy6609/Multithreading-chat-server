@@ -1,35 +1,61 @@
+# Go Chat Server
 
-## How to run
+A concurrent TCP chat server, redesigned from scratch in Go after analyzing the structural limitations of a legacy Java implementation.
 
-```bash
-cd /Users/andy6609/Multithreading-chat-server-go
-GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go run ./cmd/server -addr :5000
+The original Java system relied on shared mutable state, lock-based synchronization, and thread-per-connection blocking I/O. Rather than patching those issues, I documented the architectural constraints ([legacy analysis](docs/legacy-analysis.md)) and rebuilt the system around Go's concurrency model: goroutines, channels, and message passing ([redesign rationale](docs/redesign.md)).
+
+---
+
+## What this server does
+
+- TCP chat with username registration, broadcast, whisper (`/w`), and user listing (`/users`)
+- Concurrent client handling via goroutines (one read + one write goroutine per client)
+- All mutable state owned by a single goroutine (Registry), mutated only through channel events
+- Backpressure: slow clients get dropped messages instead of blocking the server
+- Graceful shutdown on SIGTERM/SIGINT
+
+---
+
+## Architecture
+
+```
+Client
+  → TCP connection
+  → acceptLoop (server.go)
+  → HandleSession (session.go) — one goroutine per client, parses input, emits events
+  → Registry.Run() (registry.go) — single goroutine owns all client state
+  → StartOutboundWriter (writer.go) — one goroutine per client, writes responses
+  → Client
 ```
 
-Then connect from multiple terminals:
+No component directly mutates another component's state. The Registry processes events sequentially — no locks needed.
 
+This is the core architectural difference from the legacy system: shared state + locks → message passing + single ownership.
+
+---
+
+## Concurrency model
+
+| Concern | Legacy Java | This implementation |
+|---------|------------|-------------------|
+| State access | Shared HashMap + synchronized | Single-owner goroutine, channel events |
+| I/O model | Thread-per-connection, blocking | Goroutine-per-connection, channel-based |
+| Cross-component calls | Direct method invocation | Message passing only |
+| Slow client handling | Blocks sender thread | Non-blocking send, message dropped |
+
+---
+
+## Build & run
+
+```bash
+go build -o chat-server ./cmd/server
+./chat-server -addr :5000 -metrics-addr :9090
+```
+
+Connect:
 ```bash
 nc localhost 5000
 ```
-
-## Protocol (MVP)
-
-- On connect, the server prompts: `Enter username:`
-- First line from client: username
-- After that:
-  - Any normal line: broadcast to all connected users
-  - `/users`: show current connected user list
-  - `/w <username> <text>`: whisper to a specific user
-  - `/exit`: disconnect
-
-### Error responses (minimal)
-
-- `ERR username_taken`
-- `ERR username_invalid`
-- `ERR user_not_found`
-- `ERR cannot_whisper_self`
-
-## Infrastructure
 
 ### Docker
 
@@ -44,91 +70,73 @@ docker run -p 5000:5000 -p 9090:9090 chat-server
 docker-compose up --build
 ```
 
-- Chat server: `localhost:5000`
+- Chat: `localhost:5000`
 - Prometheus: `localhost:9091`
 - Grafana: `localhost:3000` (admin/admin)
 
-### CI/CD
+---
 
-GitHub Actions runs on every push to `main`:
-- `go test ./...` — unit tests
-- `go test -race ./...` — race condition detection
-- `docker build` — image build verification
-
-### Metrics
-
-Available at `:9090/metrics`. Tracked:
-- `chat_connected_clients` — current connection count
-- `chat_messages_total` — messages by type (broadcast, whisper, etc.)
-- `chat_event_processing_seconds` — event handling latency
-
-## Architecture ↔ docs linkage
-
-This repository is a Go re-implementation based on the architectural limitations documented in `docs/legacy-analysis.md`.
-The redesign principles are described in `docs/redesign.md` and are reflected in the Go code as follows:
-
-- **Single-writer state ownership**: `internal/chat/registry.go` owns the client map in a single goroutine (`Registry.Run()`).
-- **Message passing instead of shared state**: sessions emit `Event`s into `Registry.Events()` rather than mutating global state.
-- **Per-client outbound isolation**: each client has its own outbound channel and writer goroutine (`internal/chat/writer.go`).
-
-## Verification
+## Testing
 
 ```bash
-cd /Users/andy6609/Multithreading-chat-server-go
-GOCACHE=$PWD/.gocache GOMODCACHE=$PWD/.gomodcache go test -race ./...
+go test ./... -v        # unit tests
+go test ./... -race     # race condition detection
 ```
 
+Tests cover:
+- Duplicate username rejection
+- User list consistency after join/leave
+- Whisper routing (success, unknown user, self-whisper)
+- All tests pass under `go test -race`
 
-## Background
+---
 
-This project started from analyzing an existing Java-based multithreaded chat system
-implemented by an acquaintance.
-While running and reviewing the system, I identified architectural limitations that
-cannot be addressed through simple bug fixes or minor refactoring.
+## CI/CD
 
-Since the original code was not authored by me, it is not included in this repository.
-Instead, the analysis of the legacy system and the identified structural limitations
-are documented separately in `docs/legacy-analysis.md`.
+GitHub Actions on every push to `main`:
+- `go test ./...` — unit tests
+- `go test -race ./...` — race detector
+- `docker build` — image build verification
 
-The goal of this project is not to partially modify or port the existing implementation,
-but to clearly define its architectural constraints and redesign the system from the ground up.
-Based on considerations around concurrency, scalability, and maintainability,
-the chat server is re-architected and re-implemented using Go.
+---
 
-----------------------------------------------------------------------------------------
-이 프로젝트는 지인이 기존에 구현한 Java 기반 멀티스레드 채팅 시스템을 분석하는 과정에서 출발함
-해당 코드를 직접 사용·실행·분석해보며, 단순한 버그 수정이나 구현 실수 차원으로는 해결되지 않는 구조적·아키텍처적 한계가 존재한다는 점을 인식하게 되었고, 이를 개선하는 방향으로 프로젝트를 재구성함
+## Monitoring
 
-기존 코드는 직접 작성한 것이 아니므로 본 레포지토리에는 포함하지 않았으며, 분석 과정과 구조적 한계에 대한 정리는 별도의 문서(docs/legacy-analysis.md)로 기록함. 본 프로젝트의 목적은 기존 코드를 그대로 유지하거나 부분적으로 수정하는 데 있지 않고,
-기존 구조의 한계를 명확히 정의한 뒤 동시성·확장성·유지보수성 관점에서 더 적합한 설계를 고민하여, 이를 Go 언어 기반으로 재설계·재구현하는 데 있음.
+Prometheus metrics at `:9090/metrics`:
 
-## Architecture Overview (WIP)
+- `chat_connected_clients` — current connections (gauge)
+- `chat_messages_total` — messages by type (counter)
+- `chat_event_processing_seconds` — event handling latency (histogram)
 
-This system is designed with explicit concurrency boundaries and a strong preference
-for message passing over shared mutable state.
+---
 
-[Client]
-   -> (TCP connection)
-   -> Connection Acceptor
-   -> Client Session Handler (one per connection)
-   -> Message Router
-   -> Client Registry (single owner of mutable state)
-   -> Outbound Dispatcher (isolated per-client send paths)
-   -> [Client]
+## Project structure
 
-All state mutations occur as a result of message handling rather than direct access
-to shared data structures. This approach centralizes state ownership, reduces the need
-for fine-grained locking, and makes concurrency behavior easier to reason about.
+```
+cmd/server/main.go          — entry point, flag parsing, signal handling
+internal/chat/
+  server.go                  — TCP listener, accept loop, metrics endpoint, graceful shutdown
+  session.go                 — per-client session lifecycle, input parsing
+  registry.go                — single-owner state, event processing, structured logging
+  writer.go                  — per-client outbound writer
+  metrics.go                 — Prometheus metric definitions
+  types.go                   — Event, Client, error types
+  registry_test.go           — state transition + whisper routing tests
+docs/
+  legacy-analysis.md         — structural analysis of the original Java system
+  redesign.md                — architectural rationale for the Go rewrite
+monitoring/
+  prometheus.yml             — Prometheus scrape config
+Dockerfile                   — multi-stage build
+docker-compose.yml           — server + Prometheus + Grafana
+.github/workflows/ci.yml    — CI pipeline
+```
 
-본 시스템은 동시성 경계를 명확히 하고, 공유 상태 대신 메시지 전달(message passing)을 중심으로 설계함.
+---
 
-[클라이언트]
-  -> (TCP 연결)
-  -> 연결 수락기(Connection Acceptor)
-  -> 세션 핸들러(Client Session Handler, 연결당 1개)
-  -> 메시지 라우터(Message Router)
-  -> 클라이언트 레지스트리(Client Registry, 상태 단일 소유자)
-  -> 송신 디스패처(Outbound Dispatcher, 클라이언트별 송신 경로 분리)
-  -> [클라이언트]
+## What I'd do next
 
-모든 상태 변경은 공유 메모리 접근이 아니라 메시지 흐름을 통해 수행됨.
+- Extract the router into its own component (currently co-located with Registry for simplicity)
+- Add rooms (join/leave/room broadcast)
+- Grafana dashboard JSON for reproducible monitoring setup
+- Load testing with many concurrent clients to find the backpressure threshold
