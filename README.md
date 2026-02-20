@@ -6,6 +6,16 @@ The original Java system relied on shared mutable state, lock-based synchronizat
 
 ---
 
+## Demo
+
+> Run `docker-compose up --build`, then connect with `nc localhost 5000` in multiple terminals.
+
+![Multi-client chat session](docs/images/demo-chat.png)
+
+![Grafana dashboard](docs/images/demo-grafana.png)
+
+---
+
 ## What this server does
 
 - TCP chat with username registration, broadcast, whisper (`/w`), and user listing (`/users`)
@@ -18,19 +28,34 @@ The original Java system relied on shared mutable state, lock-based synchronizat
 
 ## Architecture
 
-```
-Client
-  → TCP connection
-  → acceptLoop (server.go)
-  → HandleSession (session.go) — one goroutine per client, parses input, emits events
-  → Registry.Run() (registry.go) — single goroutine owns all client state
-  → StartOutboundWriter (writer.go) — one goroutine per client, writes responses
-  → Client
+```mermaid
+flowchart LR
+    C1[Client 1] -->|TCP| A[acceptLoop]
+    C2[Client 2] -->|TCP| A
+    C3[Client 3] -->|TCP| A
+
+    A --> S1[HandleSession\ngoroutine]
+    A --> S2[HandleSession\ngoroutine]
+    A --> S3[HandleSession\ngoroutine]
+
+    S1 -->|events| R["Registry.Run()\nsingle goroutine\nall state here"]
+    S2 -->|events| R
+    S3 -->|events| R
+
+    R -->|messages| W1[OutboundWriter\ngoroutine]
+    R -->|messages| W2[OutboundWriter\ngoroutine]
+    R -->|messages| W3[OutboundWriter\ngoroutine]
+
+    W1 -->|TCP| C1
+    W2 -->|TCP| C2
+    W3 -->|TCP| C3
+
+    R --> M[Prometheus\nmetrics]
 ```
 
 No component directly mutates another component's state. The Registry processes events sequentially — no locks needed.
 
-This is the core architectural difference from the legacy system: shared state + locks → message passing + single ownership.
+This is the core architectural difference from the legacy system: **shared state + locks → message passing + single ownership**.
 
 ---
 
@@ -72,7 +97,7 @@ docker-compose up --build
 
 - Chat: `localhost:5000`
 - Prometheus: `localhost:9091`
-- Grafana: `localhost:3000` (admin/admin)
+- Grafana: `localhost:3000` (admin/admin) — dashboard loads automatically
 
 ---
 
@@ -108,6 +133,8 @@ Prometheus metrics at `:9090/metrics`:
 - `chat_messages_total` — messages by type (counter)
 - `chat_event_processing_seconds` — event handling latency (histogram)
 
+The Grafana dashboard (`monitoring/dashboard.json`) provisions automatically via docker-compose and shows connected clients, message throughput, and p50/p95/p99 event processing latency.
+
 ---
 
 ## Project structure
@@ -127,6 +154,8 @@ docs/
   redesign.md                — architectural rationale for the Go rewrite
 monitoring/
   prometheus.yml             — Prometheus scrape config
+  dashboard.json             — Grafana dashboard (auto-provisioned)
+  grafana/provisioning/      — datasource + dashboard provisioning config
 Dockerfile                   — multi-stage build
 docker-compose.yml           — server + Prometheus + Grafana
 .github/workflows/ci.yml    — CI pipeline
@@ -138,5 +167,4 @@ docker-compose.yml           — server + Prometheus + Grafana
 
 - Extract the router into its own component (currently co-located with Registry for simplicity)
 - Add rooms (join/leave/room broadcast)
-- Grafana dashboard JSON for reproducible monitoring setup
 - Load testing with many concurrent clients to find the backpressure threshold
